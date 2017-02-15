@@ -9,7 +9,6 @@ from sensor_msgs.msg import LaserScan
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped, PoseArray, Pose, Point, Quaternion
 from nav_msgs.srv import GetMap
 from copy import deepcopy
-
 import tf
 from tf import TransformListener
 from tf import TransformBroadcaster
@@ -115,12 +114,21 @@ class ParticleFilter:
         self.current_odom_xy_theta = []
 
         # request the map from the map server, the map should be of type nav_msgs/OccupancyGrid
-        # TODO: fill in the appropriate service call here.  The resultant map should be assigned be passed
-        #       into the init method for OccupancyField
+        occ_map = self.get_map_from_server()
 
-        # for now we have commented out the occupancy field initialization until you can successfully fetch the map
-        #self.occupancy_field = OccupancyField(map)
+        self.occupancy_field = OccupancyField(occ_map)
         self.initialized = True
+
+    def get_map_from_server(self):
+        print 'Waiting for Service at: ' + str(rospy.Time.now())
+        rospy.wait_for_service('static_map')
+        print 'Recieved Service at: ' + str(rospy.Time.now())
+        try:
+            get_map = rospy.ServiceProxy('static_map', GetMap)
+            return get_map().map
+        except rospy.ServiceException as e:
+            print "Service call failed: %s"%e
+
 
     def update_robot_pose(self):
         """ Update the estimate of the robot's pose given the updated particles.

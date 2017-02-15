@@ -1,11 +1,17 @@
 <launch>
   <!-- Map server -->
-  <arg name="map_file"/>
+  <arg name="test_case"/>
   <arg name="scan_topic" default="stable_scan"/>
-  <node name="map_server" pkg="map_server" type="map_server" args="$(arg map_file)"/>
+  <node name="map_server" pkg="map_server" type="map_server" args="$(find my_localizer)/maps/$(arg test_case).yaml"/>
 
   <!-- Localization -->
-  <node name="pf" pkg="my_localizer" type="pf.py" output="screen">
+ <node name="pf" pkg="my_localizer" type="pf.py" output="screen">
     <remap from="scan" to="$(arg scan_topic)"/>
   </node>
+
+  <!-- Playing rosbag -->
+  <node pkg="rosbag" type="play" name="player" args="--clock $(find my_localizer)/bags/$(arg test_case).bag"/>
+
+
+
 </launch>

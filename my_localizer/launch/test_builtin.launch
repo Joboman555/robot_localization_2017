@@ -1,0 +1,22 @@
+<launch>
+  <!-- Map server -->
+  <arg name="test_case"/>
+  <arg name="scan_topic" default="stable_scan"/>
+<!--  <node name="map_server" pkg="map_server" type="map_server" args="$(find my_localizer)/maps/$(arg test_case).yaml"/>-->
+
+  <!-- Localization -->
+  <!-- <node name="pf" pkg="my_localizer" type="pf.py" output="screen">
+    <remap from="scan" to="$(arg scan_topic)"/>
+  </node>
+  -->
+
+  <include file="$(find neato_2dnav)/launch/amcl_builtin.launch">
+    <arg name="map_file" value="$(find my_localizer)/maps/$(arg test_case).yaml"/>
+  </include>
+
+  <!-- Playing rosbag -->
+  <node pkg="rosbag" type="play" name="player" args="--clock $(find my_localizer)/bags/$(arg test_case).bag" output="screen"/>
+
+
+
+</launch>
