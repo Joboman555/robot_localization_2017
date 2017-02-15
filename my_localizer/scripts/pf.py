@@ -119,6 +119,9 @@ class ParticleFilter:
         self.occupancy_field = OccupancyField(occ_map)
         self.initialized = True
 
+        # Initialize at 0,0
+        self.robot_pose = Pose()
+
     def get_map_from_server(self):
         print 'Waiting for Service at: ' + str(rospy.Time.now())
         rospy.wait_for_service('static_map')
@@ -130,7 +133,7 @@ class ParticleFilter:
             print "Service call failed: %s"%e
 
 
-    def update_robot_pose(self):
+    def update_robot_pose(self, particles):
         """ Update the estimate of the robot's pose given the updated particles.
             There are two logical methods for this:
                 (1): compute the mean pose
@@ -139,9 +142,13 @@ class ParticleFilter:
         # first make sure that the particle weights are normalized
         self.normalize_particles()
 
-        # TODO: assign the lastest pose into self.robot_pose as a geometry_msgs.Pose object
-        # just to get started we will fix the robot's pose to always be at the origin
-        self.robot_pose = Pose()
+        # Get the most likely particle
+        if particles:
+            weights = np.array([p.w for p in particles])
+            max_index = np.argmax(weights)
+            most_likely_pose = particles[max_index].as_pose()
+
+            self.robot_pose = most_likely_pose
 
     def update_particles_with_odom(self, msg):
         """ Update the particles using the newly given odometry pose.
@@ -231,7 +238,7 @@ class ParticleFilter:
         # TODO create particles
 
         self.normalize_particles()
-        self.update_robot_pose()
+        self.update_robot_pose(self.particle_cloud)
 
     def normalize_particles(self):
         """ Make sure the particle weights define a valid distribution (i.e. sum to 1.0) """
@@ -291,7 +298,7 @@ class ParticleFilter:
             # we have moved far enough to do an update!
             self.update_particles_with_odom(msg)    # update based on odometry
             self.update_particles_with_laser(msg)   # update based on laser scan
-            self.update_robot_pose()                # update robot's pose
+            self.update_robot_pose(self.particle_cloud)                # update robot's pose
             self.resample_particles()               # resample particles to focus on areas of high density
             self.fix_map_to_odom_transform(msg)     # update map to odom transform now that we have new particles
         # publish particles (so things like rviz can see them)
