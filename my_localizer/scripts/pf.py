@@ -173,13 +173,24 @@ class ParticleFilter:
             self.current_odom_xy_theta = new_odom_xy_theta
             return
 
-        # TODO: modify particles using delta
-        # For added difficulty: Implement sample_motion_odometry (Prob Rob p 136)
+        d_x, d_y, d_theta = delta
 
-    def map_calc_range(self,x,y,theta):
-        """ Difficulty Level 3: implement a ray tracing likelihood model... Let me know if you are interested """
-        # TODO: nothing unless you want to try this alternate likelihood model
-        pass
+        def rotate(angle, x, y):
+            rot = np.matrix([[np.cos(angle), -1*np.sin(angle)],
+                        [np.sin(angle) ,    np.cos(angle)]])
+            destination = np.matrix([x, y]) * rot
+            return destination
+
+        new_particles = []
+        for p in self.particle_cloud:
+            angle_between_frames = old_odom_xy_theta[2] - p.theta
+            res = rotate(angle_between_frames, d_x, d_y)
+            new_d_x = res[0,0]
+            new_d_y = res[0,1]
+            print new_d_x, new_d_y
+            new_particle = Particle(p.x + new_d_x, p.y + new_d_y, p.theta + d_theta) 
+            new_particles.append(new_particle)
+        self.particle_cloud = new_particles
 
     def resample_particles(self):
         """ Resample the particles according to the new particle weights.
@@ -338,13 +349,12 @@ def draw_random_sample(choices, probabilities, n):
         probabilities: the probability of selecting each element in choices represented as a list
         n: the number of samples
     """
+    choices = np.array(choices)
     values = np.array(range(len(choices)))
     probs = np.array(probabilities)
     bins = np.add.accumulate(probs)
     inds = values[np.digitize(random_sample(n), bins)]
-    samples = []
-    for i in inds:
-        samples.append(deepcopy(choices[int(i)]))
+    samples = list(choices[inds])
     return samples
 
 if __name__ == '__main__':
