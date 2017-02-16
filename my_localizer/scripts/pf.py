@@ -53,7 +53,11 @@ class Particle(object):
         orientation_tuple = tf.transformations.quaternion_from_euler(0,0,self.theta)
         return Pose(position=Point(x=self.x,y=self.y,z=0), orientation=Quaternion(x=orientation_tuple[0], y=orientation_tuple[1], z=orientation_tuple[2], w=orientation_tuple[3]))
 
+    def __eq__(self, other):
+        return self.__dict__ == other.__dict__
     # TODO: define additional helper functions if needed
+
+
 
 class ParticleFilter:
     """ The class that represents a Particle Filter ROS Node
@@ -135,12 +139,10 @@ class ParticleFilter:
 
     def update_robot_pose(self, particles):
         """ Update the estimate of the robot's pose given the updated particles.
-            There are two logical methods for this:
-                (1): compute the mean pose
-                (2): compute the most likely pose (i.e. the mode of the distribution)
+            Compute the most likely pose (i.e. the mode of the distribution)
         """
         # first make sure that the particle weights are normalized
-        self.normalize_particles()
+        particles = normalize_particles(particles)
 
         # Get the most likely particle
         if particles:
@@ -186,7 +188,7 @@ class ParticleFilter:
             function draw_random_sample.
         """
         # make sure the distribution is normalized
-        self.normalize_particles()
+        particles = normalize_particles(self.particle_cloud)
         # TODO: fill out the rest of the implementation
 
     def update_particles_with_laser(self, msg):
@@ -234,16 +236,16 @@ class ParticleFilter:
                       particle cloud around.  If this input is ommitted, the odometry will be used """
         if xy_theta == None:
             xy_theta = convert_pose_to_xy_and_theta(self.odom_pose.pose)
-        self.particle_cloud = []
+        particle_cloud = []
         # TODO create particles
 
-        self.normalize_particles()
-        self.update_robot_pose(self.particle_cloud)
+        normalized_particle_cloud  = normalize_particles(particle_cloud)
+        self.update_robot_pose(normalized_particle_cloud)
+        self.particle_cloud = normalized_particle_cloud
 
-    def normalize_particles(self):
-        """ Make sure the particle weights define a valid distribution (i.e. sum to 1.0) """
-        pass
-        # TODO: implement this
+
+
+
 
     def publish_particles(self, msg):
         particles_conv = []
@@ -328,6 +330,17 @@ class ParticleFilter:
                                           rospy.get_rostime(),
                                           self.odom_frame,
                                           self.map_frame)
+
+def normalize_particles(particles):
+    """ Make sure the particle weights define a valid distribution (i.e. sum to 1.0) """
+    if particles:
+        weights = np.array([p.w for p in particles])
+        sum_weights = np.sum(weights)
+        if sum_weights > 0:
+            normed_weights = weights / sum_weights
+            for (p, weight) in zip(particles, normed_weights):
+                p.w = weight
+    return particles
 
 if __name__ == '__main__':
     n = ParticleFilter()
