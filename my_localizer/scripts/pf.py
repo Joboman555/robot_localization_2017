@@ -296,7 +296,6 @@ class ParticleFilter:
             # print 'no particle cloud'
             # now that we have all of the necessary transforms we can update the particle cloud
             self.particle_cloud = self.initialize_particle_cloud()
-            print self.particle_cloud[1].w
             # cache the last odometric pose so we can only update our particle filter if we move more than self.d_thresh or self.a_thresh
             self.current_odom_xy_theta = new_odom_xy_theta
             # update our map to odom transform now that the particles are initialized
@@ -308,7 +307,7 @@ class ParticleFilter:
             self.update_particles_with_odom(noise=0.01)    # update based on odometry
             self.update_particles_with_laser(msg)   # update based on laser scan
             self.update_robot_pose(self.particle_cloud)                # update robot's pose
-            self.resample_particles(self.particle_cloud)               # resample particles to focus on areas of high density
+            self.particle_cloud = self.resample_particles(self.particle_cloud)               # resample particles to focus on areas of high density
             self.fix_map_to_odom_transform(msg)     # update map to odom transform now that we have new particles
         # publish particles (so things like rviz can see them)
         self.publish_particles(msg)
