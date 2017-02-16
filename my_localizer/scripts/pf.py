@@ -48,6 +48,15 @@ class Particle(object):
         self.x = x
         self.y = y
 
+    @classmethod
+    def from_numpy(self, numpy_array):
+        numpy_array = numpy_array.flatten()[:]
+        x = numpy_array[0]
+        y = numpy_array[1]
+        theta = numpy_array[2]
+        w = numpy_array[3]
+        return Particle(x, y, theta, w)
+
     def as_pose(self):
         """ A helper function to convert a particle to a geometry_msgs/Pose message """
         orientation_tuple = tf.transformations.quaternion_from_euler(0,0,self.theta)
@@ -152,13 +161,14 @@ class ParticleFilter:
 
             self.robot_pose = most_likely_pose
 
-    def update_particles_with_odom(self, msg):
+    def update_particles_with_odom(self, noise):
         """ Update the particles using the newly given odometry pose.
             The function computes the value delta which is a tuple (x,y,theta)
             that indicates the change in position and angle between the odometry
             when the particles were last updated and the current odometry.
 
-            msg: this is not really needed to implement this, but is here just in case.
+            noise: a number between 0 and 1 which describes how much noise we will
+            add to the movements
         """
         new_odom_xy_theta = convert_pose_to_xy_and_theta(self.odom_pose.pose)
         # compute the change in x,y,theta since our last update
@@ -179,16 +189,19 @@ class ParticleFilter:
             rot = np.matrix([[np.cos(angle), -1*np.sin(angle)],
                         [np.sin(angle) ,    np.cos(angle)]])
             destination = np.matrix([x, y]) * rot
-            return destination
+            return np.array(destination).flatten()
 
+        # move each particle the same distance in their coordinate frame
         new_particles = []
         for p in self.particle_cloud:
             angle_between_frames = old_odom_xy_theta[2] - p.theta
             res = rotate(angle_between_frames, d_x, d_y)
-            new_d_x = res[0,0]
-            new_d_y = res[0,1]
-            print new_d_x, new_d_y
-            new_particle = Particle(p.x + new_d_x, p.y + new_d_y, p.theta + d_theta) 
+            new_d_x = res[0]
+            new_d_y = res[1]
+            rands = random_sample(3)
+            pos = np.array([p.x + new_d_x, p.y + new_d_y, p.theta + d_theta])
+            pos_noisy = pos*(1 + noise*(rands - 0.5))
+            new_particle = Particle.from_numpy(np.append(pos_noisy, p.w)) 
             new_particles.append(new_particle)
         self.particle_cloud = new_particles
 
@@ -281,7 +294,7 @@ class ParticleFilter:
               math.fabs(new_odom_xy_theta[1] - self.current_odom_xy_theta[1]) > self.d_thresh or
               math.fabs(new_odom_xy_theta[2] - self.current_odom_xy_theta[2]) > self.a_thresh):
             # we have moved far enough to do an update!
-            self.update_particles_with_odom(msg)    # update based on odometry
+            self.update_particles_with_odom(noise=0.01)    # update based on odometry
             self.update_particles_with_laser(msg)   # update based on laser scan
             self.update_robot_pose(self.particle_cloud)                # update robot's pose
             self.resample_particles()               # resample particles to focus on areas of high density
