@@ -6,10 +6,11 @@ from __future__ import division
 
 import rospy
 
-from std_msgs.msg import Header, String
+from std_msgs.msg import Header, String, ColorRGBA
 from sensor_msgs.msg import LaserScan
-from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped, PoseArray, Pose, Point, Quaternion
+from geometry_msgs.msg import PoseStamped, Vector3, PoseWithCovarianceStamped, PoseArray, Pose, Point, Quaternion
 from nav_msgs.srv import GetMap
+from visualization_msgs.msg import Marker
 from copy import deepcopy
 import tf
 from tf import TransformListener
@@ -21,6 +22,7 @@ import math
 import time
 
 import numpy as np
+from scipy.stats import norm 
 from numpy.random import random_sample
 from sklearn.neighbors import NearestNeighbors
 from occupancy_field import OccupancyField
@@ -108,6 +110,7 @@ class ParticleFilter:
 
         self.laser_max_distance = 2.0   # maximum penalty to assess in the likelihood field model
 
+        self.num_particles = 1
         # TODO: define additional constants if needed
 
         # Setup pubs and subs
@@ -116,6 +119,9 @@ class ParticleFilter:
         self.pose_listener = rospy.Subscriber("initialpose", PoseWithCovarianceStamped, self.update_initial_pose)
         # publish the current particle cloud.  This enables viewing particles in rviz.
         self.particle_pub = rospy.Publisher("particlecloud", PoseArray, queue_size=10)
+
+        # Publishes points (places where robot is guessing a wall is)
+        self.point_publisher = rospy.Publisher('/visualization_messages/Marker', Marker, queue_size=10)
 
         # laser_subscriber listens for data from the lidar
         self.laser_subscriber = rospy.Subscriber(self.scan_topic, LaserScan, self.scan_received)
@@ -187,12 +193,6 @@ class ParticleFilter:
 
         d_x, d_y, d_theta = delta
 
-        def rotate(angle, x, y):
-            rot = np.matrix([[np.cos(angle), -1*np.sin(angle)],
-                        [np.sin(angle) ,    np.cos(angle)]])
-            destination = np.matrix([x, y]) * rot
-            return np.array(destination).flatten()
-
         # move each particle the same distance in their coordinate frame
         new_particles = []
         for p in self.particle_cloud:
@@ -221,12 +221,63 @@ class ParticleFilter:
         probabilities = np.array([p.w for p in particles])
         num_to_resample = len(particles)
         new_particles = draw_random_sample(choices, probabilities, num_to_resample)
+
+        #TODO: DO we get new particles?
         return new_particles 
 
-    def update_particles_with_laser(self, msg):
+    def update_particles_with_laser(self, msg, particles):
         """ Updates the particle weights in response to the scan contained in the msg """
-        # TODO: implement this
-        pass
+        print 'Updating Particle Weights with Laser'
+        laser_angles = np.array([0, 90, 180, 270])
+        dists = np.array(msg.ranges)[laser_angles]
+        good_dists = dists[dists != 0]
+        good_angles = laser_angles[dists != 0]
+        print good_dists
+        # List of points that we will publish
+        points = []
+        for angle in good_angles:
+            for p in particles:
+                if np.any(good_dists):
+                    # Calculate the places where the point would be
+                    phi = np.radians(good_angles) 
+                    d = good_dists
+                    x = d*np.cos(p.theta + phi)
+                    y = d*np.sin(p.theta + phi)
+
+                    for i in range(np.shape(x)[0]):
+                        points.append(Point(p.x + x[i], p.y + y[i], 0))
+
+                        dist = self.occupancy_field.get_closest_obstacle_distance(p.x + x[i], p.y + y[i])
+                        print 'Distance to wall particle is ' + str(dist)
+
+                    #How far away is that from a point on the map?
+                    #TODO : Vectorisze THIS!!!
+                    #dist = self.occupancy_field.get_closest_obstacle_distance(p.x + x, p.y + y)
+
+                    
+
+        self.publish_markers(points)
+
+        return particles
+
+    def publish_markers(self, points):
+        """
+        Helper functioning for publishing points.
+
+        Args:
+            points: points to be published
+        """
+        marker = Marker(
+            type=Marker.POINTS,
+            header=Header(
+                stamp=rospy.Time.now(),
+                frame_id=self.map_frame
+            ),
+            points=points,
+            scale=Vector3(0.1, 0.1, 0.1),
+            color=ColorRGBA(1.0, 1.0, 0.0, 1.0)
+        )
+        self.point_publisher.publish(marker)
 
     def update_initial_pose(self, msg):
         """ Callback function to handle re-initializing the particle filter based on a pose estimate.
@@ -244,7 +295,7 @@ class ParticleFilter:
         if xy_theta == None:
             xy_theta = convert_pose_to_xy_and_theta(self.odom_pose.pose)
 
-        xs, ys, thetas = gen_random_particle_positions(xy_theta, (0.5, 0.5, math.pi), 100)
+        xs, ys, thetas = gen_random_particle_positions(xy_theta, (0.5, 0.5, math.pi), self.num_particles)
 
         particle_cloud = [Particle(x, y, theta, 1) for (x, y, theta) in zip(xs, ys, thetas)]
 
@@ -304,8 +355,8 @@ class ParticleFilter:
               math.fabs(new_odom_xy_theta[1] - self.current_odom_xy_theta[1]) > self.d_thresh or
               math.fabs(new_odom_xy_theta[2] - self.current_odom_xy_theta[2]) > self.a_thresh):
             # we have moved far enough to do an update!
-            self.update_particles_with_odom(noise=0.01)    # update based on odometry
-            self.update_particles_with_laser(msg)   # update based on laser scan
+            self.update_particles_with_odom(noise=0.00)    # update based on odometry
+            self.particle_cloud = self.update_particles_with_laser(msg, self.particle_cloud)   # update based on laser scan
             self.update_robot_pose(self.particle_cloud)                # update robot's pose
             self.particle_cloud = self.resample_particles(self.particle_cloud)               # resample particles to focus on areas of high density
             self.fix_map_to_odom_transform(msg)     # update map to odom transform now that we have new particles
@@ -337,6 +388,12 @@ class ParticleFilter:
                                           self.odom_frame,
                                           self.map_frame)
 
+def rotate(angle, x, y):
+    rot = np.matrix([[np.cos(angle), -1*np.sin(angle)],
+                [np.sin(angle) ,    np.cos(angle)]])
+    destination = np.matrix([x, y]) * rot
+    return np.array(destination).flatten()
+
 def gen_random_particle_positions(xy_theta, std_devs, size):
     """generates random particles positions centered at xy_theta with std deviations defined by std_devs"""
     x, y, theta = xy_theta
@@ -367,18 +424,19 @@ def weighted_values(values, probabilities, size):
     return values[np.digitize(random_sample(size), bins)]
 
 def draw_random_sample(choices, probabilities, n):
-    """ Return a random sample of n elements from the set choices with the specified probabilities
-        choices: the values to sample from represented as a list
-        probabilities: the probability of selecting each element in choices represented as a list
-        n: the number of samples
-    """
-    choices = np.array(choices)
-    values = np.array(range(len(choices)))
-    probs = np.array(probabilities)
-    bins = np.add.accumulate(probs)
-    inds = values[np.digitize(random_sample(n), bins)]
-    samples = list(choices[inds])
-    return samples
+        """ Return a random sample of n elements from the set choices with the specified probabilities
+            choices: the values to sample from represented as a list
+            probabilities: the probability of selecting each element in choices represented as a list
+            n: the number of samples
+        """
+        values = np.array(range(len(choices)))
+        probs = np.array(probabilities)
+        bins = np.add.accumulate(probs)
+        inds = values[np.digitize(random_sample(n), bins)]
+        samples = []
+        for i in inds:
+            samples.append(deepcopy(choices[int(i)]))
+        return samples
 
 if __name__ == '__main__':
     n = ParticleFilter()
