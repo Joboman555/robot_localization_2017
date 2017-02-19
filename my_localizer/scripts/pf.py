@@ -105,13 +105,15 @@ class ParticleFilter:
 
         self.n_particles = 300          # the number of particles to use
 
-        self.d_thresh = 0.2             # the amount of linear movement before performing an update
-        self.a_thresh = math.pi/6       # the amount of angular movement before performing an update
+        self.d_thresh = 0.025          # the amount of linear movement before performing an update
+        self.a_thresh = math.pi/48       # the amount of angular movement before performing an update
 
         self.laser_max_distance = 2.0   # maximum penalty to assess in the likelihood field model
 
         self.num_particles = 100
-        self.particle_movement_noise = 0.2
+        self.particle_movement_noise = 0.1
+        self.sensor_variance = 0.05
+
 
         # Setup pubs and subs
 
@@ -143,7 +145,6 @@ class ParticleFilter:
         # Initialize at 0,0
         self.robot_pose = Pose()
 
-        self.sensor_variance = 0.1
 
     def get_map_from_server(self):
         print 'Waiting for Service at: ' + str(rospy.Time.now())
