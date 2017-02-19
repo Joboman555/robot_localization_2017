@@ -247,8 +247,8 @@ class ParticleFilter:
                     for i in range(np.shape(x)[0]):
                         points.append(Point(p.x + x[i], p.y + y[i], 0))
 
-                        dist = self.occupancy_field.get_closest_obstacle_distance(p.x + x[i], p.y + y[i])
-                        print 'Distance to wall particle is ' + str(dist)
+                    dist = self.occupancy_field.get_closest_obstacle_distance_vectorized(p.x + x, p.y + y)
+                    print 'Distance to wall particle is ' + str(dist)
 
                     #How far away is that from a point on the map?
                     #TODO : Vectorisze THIS!!!

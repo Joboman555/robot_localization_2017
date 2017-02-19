@@ -64,7 +64,7 @@ class OccupancyField(object):
         nbrs = NearestNeighbors(n_neighbors=1,algorithm="ball_tree").fit(O)
         distances, indices = nbrs.kneighbors(X)
 
-        self.closest_occ = {}
+        self.closest_occ = np.zeros(self.map.info.width * self.map.info.height)
         curr = 0
         for i in range(self.map.info.width):
             for j in range(self.map.info.height):
@@ -88,3 +88,29 @@ class OccupancyField(object):
         if ind >= self.map.info.width*self.map.info.height or ind < 0:
             return float('nan')
         return self.closest_occ[ind]
+
+
+    def get_closest_obstacle_distance_vectorized(self,xs,ys):
+        """ Compute the closest obstacle to the specified (x,y) coordinates in the map.  If the (x,y) coordinate
+            is out of the map boundaries, nan will be returned. 
+
+            Args:
+                xs: np.array of x coordinates
+                ys: np.array of y coordinates"""
+        dxs = xs - self.map.info.origin.position.x
+        dys = ys - self.map.info.origin.position.y
+        divx = dxs/self.map.info.resolution
+        divy = dys/self.map.info.resolution
+        x_coords = divx.astype(int)
+        y_coords = divy.astype(int)
+
+        # check if we are in bounds
+        if np.any(np.logical_or([x_coords > self.map.info.width], [x_coords < 0])):
+            return float('nan')
+        if np.any(np.logical_or([y_coords > self.map.info.height], [y_coords < 0])):
+            return float('nan')
+
+        ind = x_coords + y_coords*self.map.info.width
+        if np.any(np.logical_or([ind >= self.map.info.width*self.map.info.height],[ind < 0])):
+            return float('nan')
+        return np.array(self.closest_occ)[ind]
