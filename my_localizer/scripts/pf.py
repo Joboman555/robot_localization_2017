@@ -110,8 +110,7 @@ class ParticleFilter:
 
         self.laser_max_distance = 2.0   # maximum penalty to assess in the likelihood field model
 
-        self.num_particles = 1
-        # TODO: define additional constants if needed
+        self.num_particles = 100
 
         # Setup pubs and subs
 
@@ -142,6 +141,8 @@ class ParticleFilter:
 
         # Initialize at 0,0
         self.robot_pose = Pose()
+
+        self.sensor_variance = 0.1
 
     def get_map_from_server(self):
         print 'Waiting for Service at: ' + str(rospy.Time.now())
@@ -225,7 +226,7 @@ class ParticleFilter:
         #TODO: DO we get new particles?
         return new_particles 
 
-    def update_particles_with_laser(self, msg, particles):
+    def update_particles_with_laser(self, msg, particles, variance = 0.1):
         """ Updates the particle weights in response to the scan contained in the msg """
         print 'Updating Particle Weights with Laser'
         laser_angles = np.array([0, 90, 180, 270])
@@ -235,26 +236,31 @@ class ParticleFilter:
         print good_dists
         # List of points that we will publish
         points = []
-        for angle in good_angles:
-            for p in particles:
-                if np.any(good_dists):
-                    # Calculate the places where the point would be
-                    phi = np.radians(good_angles) 
-                    d = good_dists
-                    x = d*np.cos(p.theta + phi)
-                    y = d*np.sin(p.theta + phi)
+        for p in particles:
+            if np.any(good_dists):
+                # Calculate the places where the point would be
+                phi = np.radians(good_angles) 
+                d = good_dists
+                x = d*np.cos(p.theta + phi)
+                y = d*np.sin(p.theta + phi)
 
-                    for i in range(np.shape(x)[0]):
-                        points.append(Point(p.x + x[i], p.y + y[i], 0))
+                # Publish the points!
+                # for i in range(x.size):
+                #     points.append(Point(p.x + x[i], p.y + y[i], 0))
 
-                    dist = self.occupancy_field.get_closest_obstacle_distance_vectorized(p.x + x, p.y + y)
-                    print 'Distance to wall particle is ' + str(dist)
+                # How far away is that from a point on the map?
+                dist = self.occupancy_field.get_closest_obstacle_distance_vectorized(p.x + x, p.y + y)
+                # print 'Distance to wall particle is ' + str(dist)
+                # Modeling distance as a normal distribution centerd around 0
+                closeness = norm.pdf(dist, variance)
+                # Add the closenesses together to figure out our weight
+                weight = np.sum((closeness**3)/closeness.size)
+                # print 'Total Match: ' + str(weight)
+                p.w = weight
+            else:
+                p.w = 0.00001
+                print "ERROR: NO POINTS!!!"
 
-                    #How far away is that from a point on the map?
-                    #TODO : Vectorisze THIS!!!
-                    #dist = self.occupancy_field.get_closest_obstacle_distance(p.x + x, p.y + y)
-
-                    
 
         self.publish_markers(points)
 
@@ -356,7 +362,7 @@ class ParticleFilter:
               math.fabs(new_odom_xy_theta[2] - self.current_odom_xy_theta[2]) > self.a_thresh):
             # we have moved far enough to do an update!
             self.update_particles_with_odom(noise=0.00)    # update based on odometry
-            self.particle_cloud = self.update_particles_with_laser(msg, self.particle_cloud)   # update based on laser scan
+            self.particle_cloud = self.update_particles_with_laser(msg, self.particle_cloud, self.sensor_variance)   # update based on laser scan
             self.update_robot_pose(self.particle_cloud)                # update robot's pose
             self.particle_cloud = self.resample_particles(self.particle_cloud)               # resample particles to focus on areas of high density
             self.fix_map_to_odom_transform(msg)     # update map to odom transform now that we have new particles
