@@ -111,6 +111,7 @@ class ParticleFilter:
         self.laser_max_distance = 2.0   # maximum penalty to assess in the likelihood field model
 
         self.num_particles = 100
+        self.particle_movement_noise = 0.2
 
         # Setup pubs and subs
 
@@ -229,7 +230,7 @@ class ParticleFilter:
     def update_particles_with_laser(self, msg, particles, variance = 0.1):
         """ Updates the particle weights in response to the scan contained in the msg """
         print 'Updating Particle Weights with Laser'
-        laser_angles = np.array([0, 90, 180, 270])
+        laser_angles = np.linspace(0, 360, 180).astype(int)
         dists = np.array(msg.ranges)[laser_angles]
         good_dists = dists[dists != 0]
         good_angles = laser_angles[dists != 0]
@@ -361,7 +362,7 @@ class ParticleFilter:
               math.fabs(new_odom_xy_theta[1] - self.current_odom_xy_theta[1]) > self.d_thresh or
               math.fabs(new_odom_xy_theta[2] - self.current_odom_xy_theta[2]) > self.a_thresh):
             # we have moved far enough to do an update!
-            self.update_particles_with_odom(noise=0.00)    # update based on odometry
+            self.update_particles_with_odom(noise=self.particle_movement_noise)    # update based on odometry
             self.particle_cloud = self.update_particles_with_laser(msg, self.particle_cloud, self.sensor_variance)   # update based on laser scan
             self.update_robot_pose(self.particle_cloud)                # update robot's pose
             self.particle_cloud = self.resample_particles(self.particle_cloud)               # resample particles to focus on areas of high density
@@ -420,14 +421,6 @@ def normalize_particles(particles):
                 p.w = weight
     return particles
 
-def weighted_values(values, probabilities, size):
-    """ Return a random sample of size elements from the set values with the specified probabilities
-        values: the values to sample from (numpy.ndarray)
-        probabilities: the probability of selecting each element in values (numpy.ndarray)
-        size: the number of samples
-    """
-    bins = np.add.accumulate(probabilities)
-    return values[np.digitize(random_sample(size), bins)]
 
 def draw_random_sample(choices, probabilities, n):
         """ Return a random sample of n elements from the set choices with the specified probabilities
