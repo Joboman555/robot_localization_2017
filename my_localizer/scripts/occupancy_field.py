@@ -106,11 +106,14 @@ class OccupancyField(object):
 
         # check if we are in bounds
         if np.any(np.logical_or([x_coords > self.map.info.width], [x_coords < 0])):
+            print 'returning nan'
             return float('nan')
         if np.any(np.logical_or([y_coords > self.map.info.height], [y_coords < 0])):
+            print 'returning nan'
             return float('nan')
 
         ind = x_coords + y_coords*self.map.info.width
         if np.any(np.logical_or([ind >= self.map.info.width*self.map.info.height],[ind < 0])):
+            'print returning nan'
             return float('nan')
         return np.array(self.closest_occ)[ind]

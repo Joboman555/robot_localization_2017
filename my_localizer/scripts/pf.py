@@ -43,17 +43,26 @@ class Particle(object):
             theta: the yaw of the hypothesis relative to the map frame
             w: the particle weight (the class does not ensure that particle weights are normalized
     """
-
     def __init__(self,x=0.0,y=0.0,theta=0.0,w=1.0):
         """ Construct a new Particle
             x: the x-coordinate of the hypothesis relative to the map frame
             y: the y-coordinate of the hypothesis relative ot the map frame
             theta: the yaw of the hypothesis relative to the map frame
             w: the particle weight (the class does not ensure that particle weights are normalized """ 
-        self.w = w
+        self._w = w
         self.theta = theta
         self.x = x
         self.y = y
+
+    @property
+    def w(self): 
+        return self._w
+
+
+    @w.setter
+    def w(self, value):
+        # Do something if you want
+        self._w = value
 
     @classmethod
     def from_numpy(self, numpy_array):
@@ -109,8 +118,8 @@ class ParticleFilter:
         self.n_particles = 300          # the number of particles to use
 
         # If these are set any lower, the transform will timeout
-        self.d_thresh = 0.05          # the amount of linear movement before performing an update
-        self.a_thresh = math.pi/24       # the amount of angular movement before performing an update
+        self.d_thresh = 0.1          # the amount of linear movement before performing an update
+        self.a_thresh = math.pi/12       # the amount of angular movement before performing an update
 
         self.laser_max_distance = 2.0   # maximum penalty to assess in the likelihood field model
 
@@ -236,16 +245,16 @@ class ParticleFilter:
         """ Updates the particle weights in response to the scan contained in the msg """
         print 'Updating Particle Weights with Laser'
         laser_angles = np.linspace(0, 360, 90).astype(int)
-        dists = np.array(msg.ranges)[laser_angles]
-        good_dists = dists[dists != 0]
-        good_angles = laser_angles[dists != 0]
+        rs = np.array(msg.ranges)[laser_angles]
+        good_rs = rs[rs != 0]
+        good_angles = laser_angles[rs != 0]
         # List of points that we will publish
         points = []
         for p in particles:
-            if np.any(good_dists):
+            if np.any(good_rs):
                 # Calculate the places where the point would be
                 phi = np.radians(good_angles) 
-                d = good_dists
+                d = good_rs
                 x = d*np.cos(p.theta + phi)
                 y = d*np.sin(p.theta + phi)
 
@@ -255,13 +264,18 @@ class ParticleFilter:
 
                 # How far away is that from a point on the map?
                 dist = self.occupancy_field.get_closest_obstacle_distance_vectorized(p.x + x, p.y + y)
-
-                # print 'Distance to wall particle is ' + str(dist)
-                # Modeling distance as a normal distribution centerd around 0
-                closeness = norm.pdf(dist, variance)
-                # Add the closenesses together to figure out our weight
-                weight = np.sum((closeness**3)/closeness.size)
-                # print 'Total Match: ' + str(weight)
+                # if there are nans
+                print dist
+                if np.any(np.isnan(dist)):
+                    # Set the weight to zero
+                    print 'Erasing Nans...'
+                    weight = 0
+                else:
+                    # Modeling distance as a normal distribution centerd around 0
+                    closeness = norm.pdf(dist, variance)
+                    # Add the closenesses together to figure out our weight
+                    weight = np.sum((closeness**3)/closeness.size)
+                    # print 'Total Match: ' + str(weight)
                 p.w = weight
             else:
                 p.w = 0.00001
@@ -321,7 +335,9 @@ class ParticleFilter:
         if xy_theta == None:
             xy_theta = convert_pose_to_xy_and_theta(self.odom_pose.pose)
 
-        xs, ys, thetas = gen_random_particle_positions(xy_theta, (0.25, 0.25, math.pi/7), self.num_particles)
+        xs, ys, thetas = gen_random_particle_positions(xy_theta, (1, 1, math.pi), self.num_particles)
+        # xs, ys, thetas = gen_random_particle_positions(xy_theta, (0.25, 0.25, math.pi/7), self.num_particles)
+
 
         particle_cloud = [Particle(x, y, theta, 1) for (x, y, theta) in zip(xs, ys, thetas)]
 
@@ -345,7 +361,7 @@ class ParticleFilter:
             particle_color = vals[i, :]
             marker = self.create_arrow(i, p.as_pose(), p.w, particle_color)
             markers.append(marker)
-        print_weights(self.particle_cloud)
+        #nprint_weights(self.particle_cloud)
 
         # actually send the message so that we can view it in rviz
         self.particle_pub.publish(MarkerArray(markers=markers))
