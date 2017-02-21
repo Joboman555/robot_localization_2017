@@ -25,6 +25,9 @@ import numpy as np
 from scipy.stats import norm 
 from numpy.random import random_sample
 from sklearn.neighbors import NearestNeighbors
+import matplotlib.pyplot as plt
+import matplotlib.colors as colors
+import matplotlib.cm as cmx
 from occupancy_field import OccupancyField
 
 from helper_functions import (convert_pose_inverse_transform,
@@ -236,7 +239,6 @@ class ParticleFilter:
         dists = np.array(msg.ranges)[laser_angles]
         good_dists = dists[dists != 0]
         good_angles = laser_angles[dists != 0]
-        print good_dists
         # List of points that we will publish
         points = []
         for p in particles:
@@ -289,7 +291,7 @@ class ParticleFilter:
         )
         self.point_publisher.publish(marker)
 
-    def create_arrow(self, number, pose, mag):
+    def create_arrow(self, number, pose, mag, color):
         marker = Marker(
             type=Marker.ARROW,
             id = number,
@@ -298,8 +300,8 @@ class ParticleFilter:
                 frame_id=self.map_frame
             ),
             pose=pose,
-            scale=Vector3(30 * mag + 0.1, mag + 0.05, mag + 0.05),
-            color=ColorRGBA(1.0, 1.0, 0.0, 0.5)
+            scale=Vector3(100000 * (mag)**3 + 0.1, mag + 0.05, mag + 0.05),
+            color=ColorRGBA(color[0], color[1], color[2], color[3])
         )
         return marker
 
@@ -329,9 +331,21 @@ class ParticleFilter:
 
     def publish_particles(self, msg):
         markers = []
+        cmap_name = 'jet_r'
+        alpha = 0.5
+        weights = np.array([p.w for p in self.particle_cloud])
+        # Generate a colormap for the weights
+        cm = plt.get_cmap('jet')
+        cNorm = colors.Normalize(vmin=0, vmax = np.max(weights))
+        scalarMap = cmx.ScalarMappable(norm=cNorm, cmap=cm)
+        vals = scalarMap.to_rgba(weights, alpha=0.5)
+
         for i, p in enumerate(self.particle_cloud):
-            marker = self.create_arrow(i, p.as_pose(), p.w)
+            # The the color of a given particle
+            particle_color = vals[i, :]
+            marker = self.create_arrow(i, p.as_pose(), p.w, particle_color)
             markers.append(marker)
+        print_weights(self.particle_cloud)
 
         # actually send the message so that we can view it in rviz
         self.particle_pub.publish(MarkerArray(markers=markers))
@@ -440,23 +454,34 @@ def normalize_particles(particles):
 
 
 def draw_random_sample(choices, probabilities, n):
-        """ Return a random sample of n elements from the set choices with the specified probabilities
-            choices: the values to sample from represented as a list
-            probabilities: the probability of selecting each element in choices represented as a list
-            n: the number of samples
-        """
-        values = np.array(range(len(choices)))
-        probs = np.array(probabilities)
-        bins = np.add.accumulate(probs)
-        try:
-            inds = values[np.digitize(random_sample(n), bins)]
-        except IndexError as e:
-            import pdb
-            pdb.set_trace()
-        samples = []
-        for i in inds:
-            samples.append(deepcopy(choices[int(i)]))
-        return samples
+    """ Return a random sample of n elements from the set choices with the specified probabilities
+        choices: the values to sample from represented as a list
+        probabilities: the probability of selecting each element in choices represented as a list
+        n: the number of samples
+    """
+    values = np.array(range(len(choices)))
+    probs = np.array(probabilities)
+    bins = np.add.accumulate(probs)
+    try:
+        inds = values[np.digitize(random_sample(n), bins)]
+    except IndexError as e:
+        import pdb
+        pdb.set_trace()
+    samples = []
+    for i in inds:
+        samples.append(deepcopy(choices[int(i)]))
+    return samples
+
+def print_weights(particle_cloud):
+    """ 
+    Print out all the weights of the particles in the particle_cloud
+    particle_cloud: list of particles to print out weights of
+    """
+    weights = ' '
+    for p in n.particle_cloud:
+        weights += str(p.w)
+        weights += ' '
+    print weights 
 
 if __name__ == '__main__':
     n = ParticleFilter()
