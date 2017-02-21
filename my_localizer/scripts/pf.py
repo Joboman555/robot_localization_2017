@@ -298,8 +298,8 @@ class ParticleFilter:
                 frame_id=self.map_frame
             ),
             pose=pose,
-            scale=Vector3(mag, 0.05, 0.05),
-            color=ColorRGBA(1.0, 1.0, 0.0, 1.0)
+            scale=Vector3(30 * mag + 0.1, mag + 0.05, mag + 0.05),
+            color=ColorRGBA(1.0, 1.0, 0.0, 0.5)
         )
         return marker
 
