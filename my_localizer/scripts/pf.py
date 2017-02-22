@@ -92,7 +92,7 @@ class ParticleFilter:
             map_frame: the name of the map coordinate frame (should be "map" in most cases)
             odom_frame: the name of the odometry coordinate frame (should be "odom" in most cases)
             scan_topic: the name of the scan topic to listen to (should be "scan" in most cases)
-            n_particles: the number of particles in the filter
+            num_particles: the number of particles in the filter
             d_thresh: the amount of linear movement before triggering a filter update
             a_thresh: the amount of angular movement before triggering a filter update
             laser_max_distance: the maximum distance to an obstacle we should use in a likelihood calculation
@@ -115,15 +115,13 @@ class ParticleFilter:
         self.odom_frame = "odom"        # the name of the odometry coordinate frame
         self.scan_topic = "scan"        # the topic where we will get laser scans from 
 
-        self.n_particles = 300          # the number of particles to use
-
         # If these are set any lower, the transform will timeout
         self.d_thresh = 0.1          # the amount of linear movement before performing an update
         self.a_thresh = math.pi/12       # the amount of angular movement before performing an update
 
         self.laser_max_distance = 2.0   # maximum penalty to assess in the likelihood field model
 
-        self.num_particles = 100
+        self.num_particles = 300
         self.particle_movement_noise = 0.1
         self.sensor_variance = 0.05
 
@@ -248,15 +246,24 @@ class ParticleFilter:
         rs = np.array(msg.ranges)[laser_angles]
         good_rs = rs[rs != 0]
         good_angles = laser_angles[rs != 0]
+        phi = np.radians(good_angles)
+        thetas = np.array([p.theta for p in self.particle_cloud])
+        # Sum of combinations of angles. shape (size(phi), size(thetas))
+        added_angles = thetas + phi[:, np.newaxis]
+ 
+
         # List of points that we will publish
         points = []
-        for p in particles:
+        for i, p in enumerate(particles):
             if np.any(good_rs):
                 # Calculate the places where the point would be
-                phi = np.radians(good_angles) 
                 d = good_rs
-                x = d*np.cos(p.theta + phi)
-                y = d*np.sin(p.theta + phi)
+                p_angs = added_angles[:,i]
+
+                x = d*np.cos(p_angs)
+                y = d*np.sin(p_angs)
+                #import pdb
+                #pdb.set_trace()
 
                 # Publish the points!
                 # for i in range(x.size):
@@ -265,7 +272,6 @@ class ParticleFilter:
                 # How far away is that from a point on the map?
                 dist = self.occupancy_field.get_closest_obstacle_distance_vectorized(p.x + x, p.y + y)
                 # if there are nans
-                print dist
                 if np.any(np.isnan(dist)):
                     # Set the weight to zero
                     print 'Erasing Nans...'
@@ -335,8 +341,7 @@ class ParticleFilter:
         if xy_theta == None:
             xy_theta = convert_pose_to_xy_and_theta(self.odom_pose.pose)
 
-        xs, ys, thetas = gen_random_particle_positions(xy_theta, (1, 1, math.pi), self.num_particles)
-        # xs, ys, thetas = gen_random_particle_positions(xy_theta, (0.25, 0.25, math.pi/7), self.num_particles)
+        xs, ys, thetas = gen_random_particle_positions(xy_theta, (0.25, 0.25, math.pi/7), self.num_particles)
 
 
         particle_cloud = [Particle(x, y, theta, 1) for (x, y, theta) in zip(xs, ys, thetas)]

@@ -1,0 +1,13 @@
+<launch>
+  <!-- Map server -->
+  <arg name="test_case"/>
+  <arg name="scan_topic" default="stable_scan"/>
+  <node name="map_server" pkg="map_server" type="map_server" args="$(find my_localizer)/maps/$(arg test_case).yaml"/>
+
+
+  <!-- Playing rosbag -->
+  <node pkg="rosbag" type="play" name="player" output= "screen" args="--clock $(find my_localizer)/bags/$(arg test_case).bag"/>
+
+
+
+</launch>
