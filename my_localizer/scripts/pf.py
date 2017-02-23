@@ -121,7 +121,7 @@ class ParticleFilter:
 
         self.laser_max_distance = 2.0   # maximum penalty to assess in the likelihood field model
 
-        self.num_particles = 300
+        self.num_particles = 150
         self.particle_movement_noise = 0.1
         self.sensor_variance = 0.05
 
@@ -245,47 +245,42 @@ class ParticleFilter:
         laser_angles = np.linspace(0, 360, 90).astype(int)
         rs = np.array(msg.ranges)[laser_angles]
         good_rs = rs[rs != 0]
-        good_angles = laser_angles[rs != 0]
-        phi = np.radians(good_angles)
-        thetas = np.array([p.theta for p in self.particle_cloud])
-        # Sum of combinations of angles. shape (size(phi), size(thetas))
-        added_angles = thetas + phi[:, np.newaxis]
- 
+        if np.any(good_rs):
+            good_angles = laser_angles[rs != 0]
+            phi = np.radians(good_angles)
+            thetas = np.array([p.theta for p in self.particle_cloud])
+            xs = np.array([p.x for p in self.particle_cloud])
+            ys = np.array([p.y for p in self.particle_cloud])
 
-        # List of points that we will publish
-        points = []
-        for i, p in enumerate(particles):
-            if np.any(good_rs):
-                # Calculate the places where the point would be
-                d = good_rs
-                p_angs = added_angles[:,i]
+            # Sum of combinations of angles. shape (size(phi), size(thetas))
+            added_angles = thetas + phi[:, np.newaxis]
+            all_xs = good_rs * np.cos(added_angles).T
+            all_ys = good_rs * np.sin(added_angles).T
+            # Calculate the places where the point would be
+            added_xs = all_xs.T + xs
+            added_ys = all_ys.T + ys
 
-                x = d*np.cos(p_angs)
-                y = d*np.sin(p_angs)
-                #import pdb
-                #pdb.set_trace()
+            # List of points that we will publish
+            points = []
+            for i, p in enumerate(particles):
+                    # How far away is that from a point on the map?
 
-                # Publish the points!
-                # for i in range(x.size):
-                #     points.append(Point(p.x + x[i], p.y + y[i], 0))
-
-                # How far away is that from a point on the map?
-                dist = self.occupancy_field.get_closest_obstacle_distance_vectorized(p.x + x, p.y + y)
-                # if there are nans
-                if np.any(np.isnan(dist)):
-                    # Set the weight to zero
-                    print 'Erasing Nans...'
-                    weight = 0
-                else:
-                    # Modeling distance as a normal distribution centerd around 0
-                    closeness = norm.pdf(dist, variance)
-                    # Add the closenesses together to figure out our weight
-                    weight = np.sum((closeness**3)/closeness.size)
-                    # print 'Total Match: ' + str(weight)
-                p.w = weight
-            else:
-                p.w = 0.00001
-                print "ERROR: NO POINTS!!!"
+                    dist = self.occupancy_field.get_closest_obstacle_distance_vectorized(added_xs[:,i], added_ys[:,i])
+                    # if there are nans
+                    if np.any(np.isnan(dist)):
+                        # Set the weight to zero
+                        print 'Erasing Nans...'
+                        weight = 0
+                    else:
+                        # Modeling distance as a normal distribution centerd around 0
+                        closeness = norm.pdf(dist, variance)
+                        # Add the closenesses together to figure out our weight
+                        weight = np.sum((closeness**3)/closeness.size)
+                        # print 'Total Match: ' + str(weight)
+                    p.w = weight
+        else:
+            p.w = 0.00001
+            print "ERROR: NO POINTS!!!"
 
 
         self.publish_markers(points)
