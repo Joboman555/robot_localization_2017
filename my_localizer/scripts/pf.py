@@ -233,11 +233,20 @@ class ParticleFilter:
         particles = normalize_particles(particles)
         choices = particles
         probabilities = np.array([p.w for p in particles])
-        num_to_resample = len(particles)
+        
+        most_likely_particle = particles[np.argmax(probabilities)]
+        # If there are multiple most likelies, don't add new particles
+        if (np.size(most_likely_particle) < 1):
+            num_to_resample = int(len(particles)/2)
+            num_to_reinit = len(particles) - num_to_resample
+            pose_most_likely = self.convert_pose_to_xy_and_theta(most_likely_particle.as_pose)
+            reinitialized_particles = self.initialize_particle_cloud(pose_most_likely, num_to_reinit)
+        else:
+            num_to_resample = len(particles)
+            reinitialized_particles = []
+        
         new_particles = draw_random_sample(choices, probabilities, num_to_resample)
-
-        #TODO: DO we get new particles?
-        return new_particles 
+        return new_particles + reinitialized_particles
 
     def update_particles_with_laser(self, msg, particles, variance = 0.1):
         """ Updates the particle weights in response to the scan contained in the msg """
@@ -327,7 +336,7 @@ class ParticleFilter:
         self.particle_cloud = self.initialize_particle_cloud(xy_theta)
         self.fix_map_to_odom_transform(msg)
 
-    def initialize_particle_cloud(self, xy_theta=None):
+    def initialize_particle_cloud(self, xy_theta=None, num_particles=None):
         """ Initialize the particle cloud.
             Arguments
             xy_theta: a triple consisting of the mean x, y, and theta (yaw) to initialize the
@@ -335,8 +344,10 @@ class ParticleFilter:
         print 'Initializing Particle Cloud...'
         if xy_theta == None:
             xy_theta = convert_pose_to_xy_and_theta(self.odom_pose.pose)
+        if num_particles == None:
+            num_particles = self.num_particles
 
-        xs, ys, thetas = gen_random_particle_positions(xy_theta, (0.25, 0.25, math.pi/7), self.num_particles)
+        xs, ys, thetas = gen_random_particle_positions(xy_theta, (0.25, 0.25, math.pi/7), num_particles)
 
 
         particle_cloud = [Particle(x, y, theta, 1) for (x, y, theta) in zip(xs, ys, thetas)]
